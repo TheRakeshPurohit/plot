@@ -3,6 +3,7 @@ import {ScaleDiverging, ScaleLinear, ScalePow, ScaleLog, ScaleSymlog, ScaleIdent
 import {ScaleTime, ScaleUtc} from "./scales/temporal.js";
 import {ScaleOrdinal, ScalePoint, ScaleBand} from "./scales/ordinal.js";
 import {isOrdinal, isTemporal} from "./mark.js";
+import {colorLegend} from "./legends/color.js";
 
 export function Scales(channels, {inset, round, nice, align, padding, ...options} = {}) {
   const scales = {};
@@ -76,13 +77,15 @@ function Scale(key, channels = [], options = {}) {
     default: throw new Error(`unknown scale type: ${options.type}`);
   }
   if (scale) {
+    scale.options = options;
     scale.scale.type = type;
+    scale.key = key;
   }
   return scale;
 }
 
 export function scale(options) {
-  return Scale(undefined, undefined, options).scale;
+  return Scale(options.key, undefined, options).scale;
 }
 
 function inferScaleType(key, channels, {type, domain, range}) {
@@ -116,25 +119,34 @@ function asOrdinalType(key) {
   return registry.get(key) === position ? "point" : "ordinal";
 }
 
-export function exposeScales(figure, scaleDescriptors) {
-  const scales = figure.scales = {};
+export function exposeScales(scaleDescriptors) {
+  const scales = {};
+  const legends = [];
   for (const key in scaleDescriptors) {
     let cache;
     Object.defineProperty(scales, key, {
       enumerable: true,
       get: () => cache = cache || exposeScale(scaleDescriptors[key])
     });
+    const options = scaleDescriptors[key].options;
+    let {legend} = options;
+    if (legend === true && key === "color") legend = colorLegend;
+    // if (legend === true && key === "r") legend = radiusLegend; // TODO
+    if (typeof legend === "function") {
+      legends.push(legend(scales[key], options));
+    }
   }
-  return figure;
+  return [scales, legends];
 }
 
-function exposeScale({scale, label}) {
+function exposeScale({scale, key, label}) {
   return {
     domain: scale.domain(),
     range: scale.range(),
     ...scale.interpolate && {interpolate: scale.interpolate()},
     label,
     type: scale.type,
-    ...scale.clamp && {clamp: scale.clamp()}
+    ...scale.clamp && {clamp: scale.clamp()},
+    key
   };
 }
